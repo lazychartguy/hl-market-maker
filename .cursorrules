@@ -1,0 +1,21 @@
+You are working on the HL Market Maker project — a Python bot for market making on Hyperliquid XYZ builder-dex equity tokens.
+
+## Key Context
+- Main file: `scripts/market_maker.py`
+- Config: `scripts/config.example.yaml` (user copies to `config.yaml`)
+- Uses `hyperliquid-python-sdk` for order signing
+- Targets XYZ builder-dex (not regular perps) — asset IDs use 110000 offset
+- All XYZ equity tokens: integer share sizes, 2 decimal price precision
+
+## When Helping Users
+1. Always test with `--dry-run` before going live
+2. Users need `HL_WALLET` and `HL_PRIVATE_KEY` env vars
+3. Funds must be in XYZ clearinghouse (not spot)
+4. Good MM tokens: high volume, low volatility (BRENTOIL, CL, INTC, NVDA, TSLA)
+5. Key configs: spread_pct, max_inventory_units, stop_loss_pct
+
+## Code Patterns
+- HLClient class handles all API calls (place_limit, cancel_order, get_l2_book, etc.)
+- MarketMaker class runs the main loop and manages inventory
+- VolumeTracker logs fills to SQLite (mm_volume.db)
+- Optional OpenClaw alerts (gracefully skipped if not installed)
