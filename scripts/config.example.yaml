@@ -1,0 +1,45 @@
+# Hyperliquid XYZ Market Maker Configuration
+# Copy to config.yaml and edit before running
+
+market_maker:
+  # Tokens to market make (must be XYZ builder-dex equity tokens)
+  # Check available tokens: https://app.hyperliquid.xyz/dex
+  tokens:
+    - BRENTOIL
+    - CL
+    - INTC
+
+  # Spread: how far from mid price to place orders
+  # 0.15% = each side 0.15% from mid (0.3% total spread)
+  # Lower = more fills but less profit per fill
+  # Higher = fewer fills but more profit per fill
+  spread_pct: 0.15
+
+  # Order size in USD notional per order
+  order_size_usd: 200
+
+  # Max inventory in units (shares) before auto-flattening
+  # Lower = less risk, more forced cycling
+  # Higher = more risk, fewer interruptions
+  max_inventory_units: 3
+
+  # How often to refresh quotes (seconds)
+  cycle_seconds: 5
+
+  # Replace resting orders after this many seconds
+  order_refresh_seconds: 30
+
+  # Pause a token if price moves more than this % in 60 seconds
+  pause_on_volatility_pct: 1.5
+
+  # How long to pause a volatile token (minutes)
+  pause_minutes: 10
+
+  # Stop loss: close position if unrealized loss exceeds this %
+  stop_loss_pct: 2.0
+
+  # Dry run mode (true = simulate without placing real orders)
+  dry_run: false
+
+  # Leverage (5x is typical for XYZ tokens)
+  leverage: 5
