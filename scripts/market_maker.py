@@ -58,20 +58,18 @@ def load_env(path: str = ".env"):
 
 
 def send_openclaw(message: str):
-    """Send alert via OpenClaw (optional, only if installed)."""
+    """Send alert via OpenClaw (same pattern as position_monitor.py)."""
     try:
         import subprocess
-        chat_id = os.environ.get("TELEGRAM_CHAT_ID", "")
-        cmd = ["openclaw", "message", "send", "--channel", "telegram", "--message", message]
-        if chat_id:
-            cmd += ["--target", chat_id]
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        result = subprocess.run(
+            ["openclaw", "message", "send", "--channel", "telegram",
+             "--target", os.environ.get("TELEGRAM_CHAT_ID", "6340257441"),
+             "--message", message],
+            capture_output=True, text=True, timeout=15,
+        )
         return result.returncode == 0
-    except FileNotFoundError:
-        # OpenClaw not installed — skip alerts
-        return False
     except Exception as e:
-        log.error(f"Alert send failed: {e}")
+        log.error(f"OpenClaw send failed: {e}")
         return False
 
 
@@ -379,6 +377,7 @@ class MarketMaker:
         self.pause_on_volatility_pct: float = mm_cfg.get("pause_on_volatility_pct", 1.5) / 100.0
         self.pause_minutes: int = mm_cfg.get("pause_minutes", 10)
         self.stop_loss_pct: float = mm_cfg.get("stop_loss_pct", 2.0) / 100.0  # 2% SL
+        self.sl_cooldown_minutes: int = mm_cfg.get("sl_cooldown_minutes", 30)  # pause after SL hit
         # Token paused until (timestamp)
         self._paused: Dict[str, float] = defaultdict(float)
         # Last mid price per token (for volatility guard)
@@ -390,12 +389,10 @@ class MarketMaker:
         self._last_fill_check: int = get_timestamp_ms()
         # Trackers
         self.client = HLClient(
-            wallet_address=os.environ.get("HL_WALLET", os.environ.get("HL_FUNDING_WALLET", "")),
-            private_key=os.environ.get("HL_PRIVATE_KEY", os.environ.get("HL_FUNDING_KEY", "")),
+            wallet_address=os.environ["HL_FUNDING_WALLET"],
+            private_key=os.environ["HL_FUNDING_KEY"],
             dex="xyz",
         )
-        if not self.client.wallet_address or not self.client.wallet.key:
-            raise ValueError("HL_WALLET and HL_PRIVATE_KEY (or HL_FUNDING_WALLET/HL_FUNDING_KEY) env vars required")
         self.tracker = VolumeTracker()
         # Daily summary tracking
         self._last_summary_day: str = ""
@@ -408,7 +405,7 @@ class MarketMaker:
         log.info(f"  Max inventory: ±{self.max_inventory_units} units per token")
         log.info(f"  Cycle: {self.cycle_seconds}s, refresh: {self.order_refresh_seconds}s")
         log.info(f"  Volatility guard: pause if >{self.pause_on_volatility_pct*100:.1f}% move in {self.cycle_seconds}s")
-        log.info(f"  Stop loss: {self.stop_loss_pct*100:.1f}% per position")
+        log.info(f"  Stop loss: {self.stop_loss_pct*100:.1f}% per position, {self.sl_cooldown_minutes}min cooldown after SL hit")
         log.info(f"  Dry run: {self.dry_run}")
         log.info("=" * 60)
 
@@ -502,13 +499,14 @@ class MarketMaker:
         # Stop-loss check
         if abs(inv) > 0.1 and pos_info.get('upnl_pct', 0) is not None:
             upnl_pct = pos_info['upnl_pct']
-            if upnl_pct <= -self.stop_loss_pct:
+            if upnl_pct <= -(self.stop_loss_pct * 100):
                 log.warning(f"{sym} STOP LOSS triggered: {upnl_pct*100:.2f}% <= -{self.stop_loss_pct*100:.1f}%")
                 self.client.cancel_all_for_symbol(sym)
                 self._resting = {k: v for k, v in self._resting.items() if k[0] != sym}
                 ok = self.client.market_close(symbol, inv)
                 if ok:
-                    alert(f"🛑 MM STOP LOSS {sym}: {upnl_pct*100:.2f}%, closing position")
+                    alert(f"🛑 MM STOP LOSS {sym}: {upnl_pct*100:.2f}%, closing position, cooldown {self.sl_cooldown_minutes}min")
+                    self._paused[sym] = time.time() + self.sl_cooldown_minutes * 60
                 return
 
         # Check inventory
