@@ -369,7 +369,7 @@ class MarketMaker:
         self.tokens: List[str] = [t.upper() for t in mm_cfg.get("tokens", ["BRENTOIL", "CL", "INTC"])]
         self.spread_pct: float = mm_cfg.get("spread_pct", 0.15) / 100.0  # convert to decimal
         self.order_size_usd: float = mm_cfg.get("order_size_usd", 200.0)
-        self.max_inventory_units: int = mm_cfg.get("max_inventory_units", 3)
+        self.max_inventory_units: int = mm_cfg.get("max_inventory_units", 5)
         self.cycle_seconds: float = mm_cfg.get("cycle_seconds", 5)
         self.order_refresh_seconds: int = mm_cfg.get("order_refresh_seconds", 30)
         self.leverage: int = mm_cfg.get("leverage", 5)
@@ -509,15 +509,16 @@ class MarketMaker:
                     self._paused[sym] = time.time() + self.sl_cooldown_minutes * 60
                 return
 
-        # Check inventory
-        if abs(inv) >= self.max_inventory_units:
-            log.warning(f"{sym} inventory {inv:+.1f} ≥ max {self.max_inventory_units}, flattening")
-            self.client.cancel_all_for_symbol(sym)
-            self._resting = {k: v for k, v in self._resting.items() if k[0] != sym}
-            ok = self.client.market_close(symbol, inv)
-            if ok:
-                alert(f"🔧 MM FLATTEN {sym}: inventory {inv:+.0f} exceeded max, market-closed")
-            return
+        # ── Smart inventory management ──
+        # Instead of market-flattening, suppress the side that adds to inventory.
+        # Let it unwind naturally through limit orders only.
+        soft_limit = self.max_inventory_units - 1
+        suppress_buy = inv >= soft_limit   # too long — stop buying
+        suppress_sell = inv <= -soft_limit # too short — stop selling
+
+        if suppress_buy or suppress_sell:
+            suppressed_side = "BUY" if suppress_buy else "SELL"
+            log.debug(f"{sym} inv={inv:+.1f} — suppressing {suppressed_side} (soft limit {soft_limit})")
 
         # Compute quote prices
         size = max(1, int(self.order_size_usd / mid))
@@ -526,32 +527,41 @@ class MarketMaker:
 
         # Skip if spread is inverted (mid outside market)
         if buy_price >= best_ask or sell_price <= best_bid:
-            log.debug(f"{sym}: spread inverted, skipping (buy={buy_price} ask={best_ask} sell={sell_price} bid={best_bid})")
             return
 
-        # Check our resting orders — refresh stale ones
+        # Cancel any suppressed side that's still resting
+        if suppress_buy and (sym, "buy") in self._resting:
+            oid, _ = self._resting.pop((sym, "buy"))
+            try: self.client.cancel_order(symbol, oid)
+            except: pass
+        if suppress_sell and (sym, "sell") in self._resting:
+            oid, _ = self._resting.pop((sym, "sell"))
+            try: self.client.cancel_order(symbol, oid)
+            except: pass
+
+        # Quote only non-suppressed sides
         now = time.time()
-        for side, want_price, want_action in [
-            ("buy", buy_price, "buy"),
-            ("sell", sell_price, "sell"),
-        ]:
+        sides_to_quote = []
+        if not suppress_buy:
+            sides_to_quote.append(("buy", buy_price))
+        if not suppress_sell:
+            sides_to_quote.append(("sell", sell_price))
+
+        for side, want_price in sides_to_quote:
             key = (sym, side)
             if key in self._resting:
                 oid, placed_at = self._resting[key]
                 age = now - placed_at
                 if age < self.order_refresh_seconds:
-                    # Still fresh — skip
                     continue
-                # Stale — cancel and re-place
                 try:
                     self.client.cancel_order(symbol, oid)
                 except Exception as e:
                     log.debug(f"Cancel stale {sym} {side} failed: {e}")
                 self._resting.pop(key, None)
 
-            # Place new order
             if self.dry_run:
-                log.info(f"[DRY] {side.upper()} {sym} {size} @ ${want_price:.4f}")
+                log.info(f"[DRY] {side.upper()} {sym} {size} @ ${want_price:.2f}")
                 self._resting[key] = ("dry_run", now)
                 continue
 
