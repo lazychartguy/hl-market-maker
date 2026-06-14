@@ -3,17 +3,21 @@
 Automated market making bot for **Hyperliquid XYZ builder-dex equity tokens**.
 Designed for airdrop volume farming with minimal PnL impact.
 
-## Features
+## Quick Start (One Command)
 
-- **Spread capture**: Places limit buy/sell orders around mid price
-- **Inventory management**: Auto-flattens when position exceeds threshold
-- **Stop loss**: Closes positions at configurable loss percentage
-- **Volatility guard**: Pauses quoting during volatile price swings
-- **Volume tracking**: SQLite database of all fills and daily volume
-- **Dry-run mode**: Test without real orders
-- **Alert integration**: Optional OpenClaw/Telegram alerts
+```bash
+git clone https://github.com/lazychartguy/hl-market-maker.git
+cd hl-market-maker
+pip install -r requirements.txt
+python3 scripts/setup.py
+```
 
-## Quick Start
+The setup wizard walks you through everything: wallet setup, token selection, risk level, and a test run.
+
+## Manual Setup
+
+<details>
+<summary>Prefer to do it yourself? Click here.</summary>
 
 ```bash
 # Install dependencies
@@ -33,34 +37,56 @@ python3 scripts/market_maker.py --dry-run
 python3 scripts/market_maker.py
 ```
 
+</details>
+
+## Features
+
+- **Spread capture**: Places limit buy/sell orders around mid price
+- **Inventory management**: Auto-flattens when position exceeds threshold
+- **Stop loss**: Closes positions at configurable loss percentage
+- **Volatility guard**: Pauses quoting during volatile price swings
+- **Volume tracking**: SQLite database of all fills and daily volume
+- **Dry-run mode**: Test without real orders
+- **Setup wizard**: Interactive configuration (python3 scripts/setup.py)
+- **Alert integration**: Optional OpenClaw/Telegram alerts
+
 ## Configuration
 
-Edit `config.yaml` to customize:
+Edit config.yaml to customize (or use the setup wizard):
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `tokens` | BRENTOIL, CL, INTC | XYZ tokens to market make |
-| `spread_pct` | 0.15 | Distance from mid price per side (%) |
-| `order_size_usd` | 200 | Notional size per order ($) |
-| `max_inventory_units` | 3 | Max position before auto-flatten |
-| `stop_loss_pct` | 2.0 | Close at this unrealized loss (%) |
-| `cycle_seconds` | 5 | Quote refresh interval |
-| `pause_on_volatility_pct` | 1.5 | Pause threshold for price moves |
-
-See `scripts/config.example.yaml` for full documentation.
+| Parameter | Conservative | Balanced | Aggressive |
+|-----------|-------------|----------|------------|
+| spread_pct | 0.30% | 0.15% | 0.05% |
+| order_size_usd | $100 | $200 | $400 |
+| max_inventory | 2 units | 3 units | 5 units |
+| stop_loss_pct | 1.5% | 2.0% | 3.0% |
+| Volume/day | ~$5K | ~$15K | ~$40K+ |
 
 ## How It Works
 
-1. Every `cycle_seconds`, fetches best bid/ask for each token
-2. Places limit buy at `mid * (1 - spread)` and sell at `mid * (1 + spread)`
+1. Every 5 seconds, fetches best bid/ask for each token
+2. Places limit buy below mid and sell above mid
 3. When fills occur, logs volume and tracks inventory
-4. If inventory exceeds `max_inventory_units`, market-flattens immediately
-5. If unrealized loss exceeds `stop_loss_pct`, closes the position
+4. If inventory exceeds limit, market-flattens immediately
+5. If unrealized loss exceeds stop loss, closes the position
+
+## AI Agent Support
+
+Works with all major AI coding assistants:
+
+| Platform | Config File | Auto-detected |
+|----------|------------|---------------|
+| OpenClaw | SKILL.md | Yes |
+| Claude Code | CLAUDE.md | Yes |
+| Codex | AGENTS.md | Yes |
+| Cursor | .cursorrules | Yes |
+
+Just open the repo in your AI tool and say "set up the market maker."
 
 ## Requirements
 
 - Hyperliquid account with USDC in XYZ clearinghouse
-- API wallet (agent key) — create at Settings → API Wallets
+- API wallet (agent key) at Settings then API Wallets
 - Python 3.11+
 
 ## License
