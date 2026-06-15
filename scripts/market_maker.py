@@ -378,6 +378,9 @@ class MarketMaker:
         self.pause_minutes: int = mm_cfg.get("pause_minutes", 10)
         self.stop_loss_pct: float = mm_cfg.get("stop_loss_pct", 2.0) / 100.0  # 2% SL
         self.sl_cooldown_minutes: int = mm_cfg.get("sl_cooldown_minutes", 30)  # pause after SL hit
+        self.max_daily_loss: float = mm_cfg.get("max_daily_loss", 15.0)  # stop trading if down $15/day
+        self.start_of_day_equity: float = 0.0
+        self._daily_loss_hit: bool = False
         # Token paused until (timestamp)
         self._paused: Dict[str, float] = defaultdict(float)
         # Last mid price per token (for volatility guard)
@@ -406,6 +409,7 @@ class MarketMaker:
         log.info(f"  Cycle: {self.cycle_seconds}s, refresh: {self.order_refresh_seconds}s")
         log.info(f"  Volatility guard: pause if >{self.pause_on_volatility_pct*100:.1f}% move in {self.cycle_seconds}s")
         log.info(f"  Stop loss: {self.stop_loss_pct*100:.1f}% per position, {self.sl_cooldown_minutes}min cooldown after SL hit")
+        log.info(f"  Max daily loss: ${self.max_daily_loss:.0f} (stops all trading)")
         log.info(f"  Dry run: {self.dry_run}")
         log.info("=" * 60)
 
@@ -431,7 +435,28 @@ class MarketMaker:
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         if self._last_summary_day and self._last_summary_day != today:
             self._send_daily_summary(self._last_summary_day)
+            self.start_of_day_equity = self._get_equity()
+            self._daily_loss_hit = False
         self._last_summary_day = today
+
+        # Set start-of-day equity on first cycle
+        if self.start_of_day_equity == 0:
+            self.start_of_day_equity = self._get_equity()
+
+        # Daily loss limit check
+        current_eq = self._get_equity()
+        daily_pnl = current_eq - self.start_of_day_equity
+        if daily_pnl <= -self.max_daily_loss and not self._daily_loss_hit:
+            self._daily_loss_hit = True
+            for sym in self.tokens:
+                self.client.cancel_all_for_symbol(sym)
+            self._resting.clear()
+            alert(f"🛑 MM DAILY LOSS LIMIT hit: ${daily_pnl:+.2f} today (limit ${self.max_daily_loss}). All trading stopped.")
+            log.error(f"DAILY LOSS LIMIT: ${daily_pnl:+.2f} reached. Stopping.")
+
+        if self._daily_loss_hit:
+            log.info(f"Daily loss limit active (${daily_pnl:+.2f}). Not quoting. Equity ${current_eq:.2f}.")
+            return
 
         # Process new fills first
         self._process_fills()
@@ -447,8 +472,18 @@ class MarketMaker:
         daily_total, per_token = self.tracker.daily_volume()
         positions = self.client.get_positions()
         inv_summary = " ".join(f"{s}={v:+.0f}" for s, v in positions.items() if any(s == t or s.endswith(t) for t in self.tokens))
-        log.info(f"Vol today: ${daily_total:,.0f} | Total: ${self.tracker.total_volume():,.0f} | Inventory: {inv_summary or 'flat'}")
+        log.info(f"Vol today: ${daily_total:,.0f} | Total: ${self.tracker.total_volume():,.0f} | Day PnL: ${daily_pnl:+.2f} | Inv: {inv_summary or 'flat'}")
 
+
+    def _get_equity(self) -> float:
+        """Fetch current XYZ equity."""
+        try:
+            r = self.client._session.post(self.client.base_url + "/info",
+                json={"type": "clearinghouseState", "user": self.client.wallet_address, "dex": "xyz"},
+                timeout=10)
+            return float(r.json().get("marginSummary", {}).get("accountValue", 0))
+        except:
+            return self.start_of_day_equity
 
     def _get_position_info(self, symbol: str) -> dict:
         """Fetch position details from clearinghouseState for a single token."""

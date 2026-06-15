@@ -1,9 +1,9 @@
 # Hyperliquid XYZ Market Maker Configuration
 # Copy to config.yaml and edit before running
+# Or run: python3 scripts/setup.py (interactive wizard)
 
 market_maker:
   # Tokens to market make (must be XYZ builder-dex equity tokens)
-  # Check available tokens: https://app.hyperliquid.xyz/dex
   tokens:
     - BRENTOIL
     - CL
@@ -18,10 +18,9 @@ market_maker:
   # Order size in USD notional per order
   order_size_usd: 200
 
-  # Max inventory in units (shares) before auto-flattening
-  # Lower = less risk, more forced cycling
-  # Higher = more risk, fewer interruptions
-  max_inventory_units: 3
+  # Max inventory in units (shares) — bot stops quoting the
+  # adding side when inventory approaches this limit
+  max_inventory_units: 5
 
   # How often to refresh quotes (seconds)
   cycle_seconds: 5
@@ -37,6 +36,14 @@ market_maker:
 
   # Stop loss: close position if unrealized loss exceeds this %
   stop_loss_pct: 2.0
+
+  # Stop ALL trading if daily loss exceeds this amount ($)
+  # Circuit breaker — prevents catastrophic days
+  max_daily_loss: 15.0
+
+  # Pause a token for this many minutes after a stop loss hit
+  # Prevents re-entering into a crashing market
+  sl_cooldown_minutes: 30
 
   # Dry run mode (true = simulate without placing real orders)
   dry_run: false
