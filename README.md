@@ -91,9 +91,9 @@ Just open the repo in your AI tool and say "set up the market maker."
 
 ## 💜 Referral
 
-Use referral code **LAZY** when signing up for Hyperliquid — you'll get fee discounts and support this project.
+Use referral code **LAZYCHARTGUY** when signing up for Hyperliquid — you'll get fee discounts and support this project.
 
-👉 [Sign up with referral](https://app.hyperliquid.xyz/join/LAZY)
+👉 [Sign up with referral](https://app.hyperliquid.xyz/join/LAZYCHARTGUY)
 
 
 ## License

@@ -73,8 +73,8 @@ def yes_no(question, default="y"):
 def main():
     header("🤖 HL Market Maker — Setup Wizard")
 print()
-    print("  💜 Tip: Use referral code LAZY when signing up for Hyperliquid")
-    print("     https://app.hyperliquid.xyz/join/LAZY")
+    print("  💜 Tip: Use referral code LAZYCHARTGUY when signing up for Hyperliquid")
+    print("     https://app.hyperliquid.xyz/join/LAZYCHARTGUY")
     print("     Gets you fee discounts and supports this project 🙏")
 
     # ── Step 1: Prerequisites ──────────────────────────────────────────────
